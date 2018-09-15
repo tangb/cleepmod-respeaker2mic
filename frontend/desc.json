@@ -1,0 +1,7 @@
+{
+    "icon": "microphone-settings",
+    "config": {
+        "js": ["respeaker2mic.directive.js", "respeaker2mic.service.js"],
+        "html": ["respeaker2mic.directive.html", "addLedsProfileDialog.directive.html"]
+    }
+}

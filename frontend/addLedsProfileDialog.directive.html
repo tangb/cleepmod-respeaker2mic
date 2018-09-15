@@ -1,0 +1,134 @@
+<md-dialog aria-label="Add phrase" flex="50">
+    <form ng-cloak>
+        <md-toolbar>
+            <div class="md-toolbar-tools">
+                <h2>Add LED profile</h2>
+                <span flex></span>
+                <md-button class="md-icon-button" ng-click="dialogCtl.cancelDialog()" aria-label="Close dialog">
+                    <md-icon md-svg-icon="close"></md-icon>
+                </md-button>
+            </div>
+        </md-toolbar>
+
+        <md-dialog-content>
+            <form name="dialogform">
+                <div class="md-dialog-content" layout="column">
+
+                    <!-- message -->
+                    <div layout="row" style="padding-bottom:15px;">
+                        <span>You can create your own LED animations using this assistant</span>:
+                    </div>
+
+                    <!-- name + repeat -->
+                    <div layout="row">
+                        <md-input-container flex="50">
+                            <label>Profile name</label>
+                            <input ng-model="dialogCtl.newLedsProfileName">
+                        </md-input-container>
+                        <md-input-container class="md-block" flex="50">
+                            <label>Repeat schema</label>
+                            <md-select ng-model="dialogCtl.newLedsProfileRepeat">
+                                <md-option ng-repeat="repetition in dialogCtl.repetitions" ng-value="repetition.value">{{repetition.label}}</md-option>
+                            </md-select>
+                        </md-input-container>
+                    </div>
+
+                    <!-- command -->
+                    <div layout="row">
+                        <!-- action -->
+                        <md-input-container class="md-block" flex="30">
+                            <label>Action</label>
+                            <md-select ng-model="dialogCtl.newLedsProfileAction">
+                                <md-option ng-repeat="action in dialogCtl.actions" ng-value="action.value">{{action.label}}</md-option>
+                            </md-select>
+                        </md-input-container>
+                        <!-- color -->
+                        <md-input-container class="md-block" flex="30" ng-if="dialogCtl.newLedsProfileAction!==5">
+                            <label>Color</label>
+                            <md-select ng-model="dialogCtl.newLedsProfileColor">
+                                <md-option ng-repeat="color in dialogCtl.colors" ng-value="color.value">{{color.label}}</md-option>
+                            </md-select>
+                        </md-input-container>
+                        <!-- brightness -->
+                        <md-input-container class="md-block" flex="30" ng-if="dialogCtl.newLedsProfileAction!==5">
+                            <label>Brightness</label>
+                            <md-select ng-model="dialogCtl.newLedsProfileBrightness">
+                                <md-option ng-repeat="brightness in dialogCtl.brightnesses" ng-value="brightness.value">{{brightness.label}}</md-option>
+                            </md-select>
+                        </md-input-container>
+                        <!-- pause duration -->
+                        <md-slider-container ng-if="dialogCtl.newLedsProfileAction===5" flex="60">
+                            <md-slider flex min="50" max="1000" step="50" ng-model="dialogCtl.newLedsProfilePause" aria-label="Pause duration" id="pauseduration"></md-slider>
+                            <span>{{dialogCtl.newLedsProfilePause}}ms</span>
+                        </md-slider-container>
+                        <div flex="10">
+                            <md-button ng-click="dialogCtl.addLedsProfileAction()" class="md-raised md-primary">
+                                <md-icon md-svg-icon="plus"></md-icon>
+                            </md-button>
+                        </div>
+                    </div>
+
+                    <!-- tiles -->
+                    <md-grid-list md-cols="8" md-row-height="1:1" ng-if="dialogCtl.selectedLedsProfile.actions.length===0">
+                        <md-grid-tile style="background-color:#EEEEEE;">
+                            <md-icon md-svg-icon="information-outline"></md-icon>
+                            <md-grid-tile-footer style="height:30px;">
+                                <h3>No action yet</h3>
+                            </md-grid-tile-footer>
+                        </md-grid-tile>
+                    </md-grid-list>
+                    <md-grid-list md-cols="8" md-row-height="1:1" ng-if="dialogCtl.selectedLedsProfile.actions.length>0">
+                        <md-grid-tile ng-repeat="action in dialogCtl.selectedLedsProfile.actions" style="background-color:#EEEEEE;">
+
+                            <!-- header -->
+                            <md-grid-tile-header style="height:30px; padding-left:17px;">
+                                <md-icon md-svg-icon="arrow-left-thick" style="cursor:pointer; color:white;" ng-click="dialogCtl.moveLeftLedsProfileAction($index)"></md-icon>
+                                <md-icon md-svg-icon="delete" style="cursor:pointer; color:white;" ng-click="dialogCtl.removeLedsProfileAction($index)"></md-icon>
+                                <md-icon md-svg-icon="arrow-right-thick" style="cursor:pointer; color:white;" ng-click="dialogCtl.moveRightLedsProfileAction($index)"></md-icon>
+                            </md-grid-tile-header>
+
+                            <!-- color single led -->
+                            <md-icon ng-if="action.action===1 || action.action===2 || action.action===3" md-svg-icon="circle" ng-style="{'color':action.color}"></md-icon>
+                            <md-grid-tile-footer ng-if="action.action===1 || action.action===2 || action.action===3" style="height:30px;">
+                                <h3>
+                                    <span>LED{{action.action}}</span> - {{action.brightness}}%
+                                </h3>
+                            </md-grid-tile-footer>
+
+                            <!-- color all leds -->
+                            <div ng-if="action.action===4">
+                                <md-icon md-svg-icon="circle" ng-style="{'color':action.color}"></md-icon>
+                                <md-icon md-svg-icon="circle" ng-style="{'color':action.color}"></md-icon>
+                                <md-icon md-svg-icon="circle" ng-style="{'color':action.color}"></md-icon>
+                            </div>
+                            <md-grid-tile-footer ng-if="action.action===4" style="height:30px;">
+                                <h3>
+                                    <span>All LEDs</span> - {{action.brightness}}%
+                                </h3>
+                            </md-grid-tile-footer>
+
+                            <!-- pause -->
+                            <md-icon ng-if="action.action===5" md-svg-icon="sleep"></md-icon>
+                            <md-grid-tile-footer ng-if="action.action===5" style="height:30px;">
+                                <h3>
+                                    {{action.pause}}ms
+                                </h3>
+                            </md-grid-tile-footer>
+
+                        </md-grid-tile>
+                    </md-grid-list>
+
+                </div>
+            </form>
+        </md-dialog-content>
+
+        <md-dialog-actions layout="row">
+            <span flex></span>
+            <md-button ng-click="dialogCtl.validDialog()" aria-label="Add phrase">
+                <md-icon md-svg-icon="plus"></md-icon>
+                <span>Add profile</span>
+            </md-button>
+        </md-dialog-actions>
+
+    </form>
+</md-dialog>

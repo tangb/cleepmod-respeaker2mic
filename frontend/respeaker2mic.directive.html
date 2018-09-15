@@ -1,0 +1,44 @@
+<div layout="column" layout-padding ng-cloak>
+
+    <!-- driver -->
+    <md-list ng-cloak>
+        <md-subheader class="md-no-sticky">Respeaker2mic driver</md-subheader>
+		<md-list-item>
+            <md-icon md-svg-icon="chevron-right"></md-icon>
+            <p class="custom-list-item-label" ng-if="respeaker2micCtl.driverStatus==='installed'">Driver is installed</p>
+            <p class="custom-list-item-label" ng-if="respeaker2micCtl.driverStatus==='notinstalled'">Driver is not installed</p>
+            <p class="custom-list-item-label" ng-if="respeaker2micCtl.driverStatus==='installing'">Driver is installing...</p>
+            <md-button class="md-raised md-primary" ng-if="respeaker2micCtl.driverStatus==='notinstalled'" ng-click="respeaker2micCtl.installDriver()" aria-label="Install driver">
+                <md-icon md-svg-icon="arrow-down-bold-box"></md-icon>
+                Install
+            </md-button>
+            <md-button class="md-raised md-primary" ng-if="respeaker2micCtl.driverStatus==='installed'" ng-click="respeaker2micCtl.uninstallDriver()" aria-label="Uninstall driver">
+                <md-icon md-svg-icon="arrow-up-bold-box"></md-icon>
+                Uninstall
+            </md-button>
+            <md-button class="md-raised md-primary" ng-if="respeaker2micCtl.driverStatus==='installing'" ng-click="respeaker2micCtl.stopDriver()" aria-label="Install driver">
+                <md-icon md-svg-icon="stop"></md-icon>
+                Stop install
+            </md-button>
+		</md-list-item>
+    </md-list-item>
+
+    <!-- leds -->
+    <md-list ng-cloak>
+        <md-subheader class="md-no-sticky">LEDs profiles</md-subheader>
+        <md-list-item ng-repeat="profile in respeaker2micCtl.ledsProfiles">
+            <md-icon md-svg-icon="chevron-right"></md-icon>
+            <p>{{profile.name}}: {{profile.actions.length}} actions</p>
+            <md-button class="md-secondary md-primary" ng-click="respeaker2micCtl.testLedsProfile(profile)">
+                <md-icon md-svg-icon="play"></md-icon>
+                Test
+            </md-button>
+            <md-button class="md-secondary md-warn" ng-click="respeaker2micCtl.removeLedsProfile(profile)" ng-disabled="profile.default">
+                <md-icon md-svg-icon="delete"></md-icon>
+                Remove
+            </md-button>
+        </md-list-item>
+    </md-list>
+
+</div>
+
