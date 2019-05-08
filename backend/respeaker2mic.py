@@ -7,13 +7,17 @@ import os
 import uuid
 from threading import Thread
 import copy
-from raspiot.raspiot import RaspIotRenderer
-from raspiot.profiles import SpeechRecognitionHotwordProfile, SpeechRecognitionCommandProfile
-from raspiot.utils import CommandError, InvalidParameter, MissingParameter
-import raspiot.libs.drivers.apa102 as apa102
+import shutil
+from raspiot.raspiot import RaspIotRenderer, RaspIotResources
+from raspiot.events.speechRecognitionHotwordProfile import SpeechRecognitionHotwordProfile
+from raspiot.events.speechRecognitionCommandProfile import SpeechRecognitionCommandProfile
+from raspiot.utils import CommandError, InvalidParameter, MissingParameter, CATEGORIES
+from raspiot.libs.drivers.audiodriver import AudioDriver
+from raspiot.libs.commands.lsmod import Lsmod
+from raspiot.libs.internals.console import Console, EndlessConsole
+import apa102 as apa102
 
 __all__ = ['Respeaker2mic']
-
 
 class LedsProfileTask(Thread):
     """
@@ -139,30 +143,58 @@ class LedsProfileTask(Thread):
 
 
 
-class Respeaker2mic(RaspIotRenderer):
+class Respeaker2mic(RaspIotRenderer, RaspIotResources):
     """
     Respeaker2mic module handles respeaker2mic configuration:
         - led effect,
         - button behaviour,
         - driver installation/uninstallation
 
-    Resources:
-        - http://wiki.seeed.cc/ReSpeaker_2_Mics_Pi_HAT/
+    Note:
+        http://wiki.seeed.cc/ReSpeaker_2_Mics_Pi_HAT/
     """
     MODULE_AUTHOR = u'Cleep'
     MODULE_VERSION = u'1.0.0'
+    MODULE_CATEGORY = CATEGORIES.DRIVER
     MODULE_PRICE = 0
     MODULE_DEPS = [u'gpios']
-    MODULE_DESCRIPTION = u'Configure your Respeaker2mic hardware'
+    MODULE_DESCRIPTION = u'Configure your ReSpeaker2Mic hat'
+    MODULE_LONGDESCRIPTION = u'The ReSpeaker 2 Mic Array (ReSpeaker 2-Mics Pi HAT) is a 2 microphone array\
+                             Pi Hat for Raspberry Pi designed for AI and voice applications. It also handles\
+                             3 RGB Leds and a button that allow application to interact with user easily. It embeds\
+                             a soundcard really useful for Raspberrypi Zero.<br><br>It the perfect partner for your\
+                             first voice assistant.'
     MODULE_LOCKED = False
-    MODULE_TAGS = [u'audio', u'mic']
+    MODULE_TAGS = [u'audio', u'mic', u'led', u'button', u'soundcard', u'grove']
     MODULE_COUNTRY = None
-    MODULE_URLINFO = None
-    MODULE_URLHELP = None
-    MODULE_URLSITE = None
-    MODULE_URLBUGS = None
+    MODULE_URLINFO = u'https://github.com/tangb/cleepmod-respeaker2mic'
+    MODULE_URLHELP = u'https://github.com/tangb/cleepmod-respeaker2mic/wiki'
+    MODULE_URLBUGS = u'https://github.com/tangb/cleepmod-respeaker2mic/issues'
+    MODULE_URLSITE = u'https://respeaker.io/2_mic_array/'
 
     MODULE_CONFIG_FILE = u'respeaker2mic.conf'
+    MODULE_RESOURCES = { 
+        u'ReSpeaker2Mic soundcard': {
+            u'audio.playback': {
+                u'hardware_id': u'seeed-2mic-voicecard',
+                u'permanent': True
+            },
+            u'audio.capture': {
+                u'hardware_id': u'seeed-2mic-voicecard',
+                u'permanent': True
+            }
+        }
+    }
+
+    AUDIO_DRIVERS = {
+        u'seeed-2mic-voicecard': {
+            u'output_type': AudioDriver.OUTPUT_TYPE_HAT,
+            u'playback_volume': u'Playback',
+            u'playback_volume_data': (u'Front Left', r'\[(\d*)%\]'),
+            u'capture_volume': u'Capture',
+            u'capture_volume_data': (u'Front Left', r'\[(\d*)%\]'),
+        }
+    }
 
     RENDERER_PROFILES = [SpeechRecognitionHotwordProfile, SpeechRecognitionCommandProfile]
     RENDERER_TYPE = u'leds'
@@ -287,6 +319,7 @@ class Respeaker2mic(RaspIotRenderer):
     RESPEAKER_REPO = u'https://github.com/respeaker/seeed-voicecard.git'
     TMP_DIR = u'/tmp/respeaker'
     DRIVER_PATH = u'/boot/overlays/seeed-2mic-voicecard.dtbo'
+    MOD_WM8960 = u'snd-soc-wm8960'
 
     COLOR_BLACK = [0, 0, 0]
     COLOR_WHITE = [255,255,255]
@@ -318,22 +351,30 @@ class Respeaker2mic(RaspIotRenderer):
         """
         #init
         RaspIotRenderer.__init__(self, bootstrap, debug_enabled)
+        RaspIotResources.__init__(self, bootstrap, debug_enabled)
 
         #members
-        self.leds_driver = apa102.APA102(num_led=3)
+        self.leds_driver = None
         self.__driver_task = None
         self.__leds_profile_task = None
+        self.__lsmod = Lsmod()
 
     def _configure(self):
         """
         Configure module
         """
+        #register audio driver
+        for driver_name, driver in self.AUDIO_DRIVERS.items():
+            self._register_driver(AudioDriver(driver_name, driver))
+
         #configure button
         if self._get_config_field(u'button_gpio_uuid') is None:
             self.__configure_button()
 
         #play blink green at startup
-        self.play_leds_profile(self.LEDS_PROFILE_BLINK_GREEN)
+        if self.is_driver_installed():
+            self.leds_driver = apa102.APA102(num_led=3)
+            self.play_leds_profile(self.LEDS_PROFILE_BLINK_GREEN)
 
     def __configure_button(self):
         """
@@ -372,11 +413,30 @@ class Respeaker2mic(RaspIotRenderer):
         """
         return {
             u'driverprocessing': self.__driver_task is not None,
-            u'driverinstalled': self.is_installed(),
+            u'driverinstalled': self.is_driver_installed(),
             u'ledsprofiles': self._get_config_field(u'leds_profiles')
         }
 
-    def is_installed(self):
+    def _resource_acquired(self, resource_name):
+        """
+        Resource just acquired
+
+        Args:
+            resource_name (string): acquired resource name
+        """
+        self.logger.debug(u'Resource "%s" acquired' % resource_name)
+
+    def _resource_needs_to_be_released(self, resource_name):
+        """
+        Resource need to be released
+
+        Args:
+            resource_name (string): resource name to release
+        """
+        self.logger.debug(u'Resource "%s" needs to be released' % resource_name)
+        self._release_resource(resource_name)
+
+    def is_driver_installed(self):
         """ 
         Return driver installation status
 
@@ -384,7 +444,7 @@ class Respeaker2mic(RaspIotRenderer):
             bool: True if driver already installed
         """
         #check if drivers installed
-        if os.path.exists(self.DRIVER_PATH):
+        if os.path.exists(self.DRIVER_PATH) and self.__lsmod.is_module_loaded(self.MOD_WM8960):
             return True
 
         return False
@@ -402,11 +462,13 @@ class Respeaker2mic(RaspIotRenderer):
             shutil.rmtree(self.TMP_DIR)
 
         #get sources
+        cmd = u'/usr/bin/git clone "%s" "%s" 2> /dev/null' % (self.RESPEAKER_REPO, self.TMP_DIR)
+        self.logger.debug(u'Respeaker prepare driver cmd: %s' % cmd)
         console = Console()
-        res = console.command(u'/usr/bin/git "%s" /tmp/respeaker-driver' % self.RESPEAKER_REPO, timeout=30)
-        if res[u'error'] or res[u'killed']:
-            self.logger.error(u'Error occured during git command: %s' % res)
-            raise Exception(u'Unable to install or uninstall respeaker driver: respeaker repository seems no available.')
+        res = console.command(cmd, timeout=120)
+        if res[u'killed'] or not os.path.exists(self.TMP_DIR):
+            self.logger.error(u'Error occured during git clone command: %s' % res)
+            raise Exception(u'Unable to install or uninstall respeaker driver: respeaker repository seems not available.')
         if not os.path.exists(os.path.join(self.TMP_DIR, u'install.sh')) or not os.path.exists(os.path.join(self.TMP_DIR, u'uninstall.sh')):
             self.logger.error('Install.sh or uninstall.sh scripts do not exists.')
             raise Exception(u'Unable to install or uninstall respeaker driver: some scripts do not exist.')
@@ -437,27 +499,21 @@ class Respeaker2mic(RaspIotRenderer):
         if os.path.exists(self.TMP_DIR):
             shutil.rmtree(self.TMP_DIR)
 
+        self.logger.info('Respeaker driver process return code: %s (killed %s)' % (return_code, killed))
+
         #reset
         self.__driver_task = None
 
-	#send terminated event
-	#TODO
+        #reboot device
+        self.send_command(u'reboot_system', u'system', {u'delay': 5.0})
 
     def install_driver(self):
         """
         Install respeaker 2mic driver. At end of installation device reboot is required
         """
         #check params
-        if install_status_callback is None:
-            raise MissingParameter(u'Parameter install_status_callback is missing')
-        if not callable(install_status_callback):
-            raise InvalidParameter(u'Parameter install_status_callback must be a callback')
-        if install_terminated_callback is None:
-            raise MissingParameter(u'Parameter install_terminated_callback is missing')
-        if not callable(install_terminated_callback):
-            raise InvalidParameter(u'Parameter install_terminated_callback must be a callback')
         if self.__driver_task is not None:
-            raise Exception(u'Driver process is already running. Stop it before launching installation')
+            raise CommandError(u'Driver task is already running. Wait end of it before launching uninstallation')
          
         #prepare install
         self.__prepare_driver_task()
@@ -473,16 +529,8 @@ class Respeaker2mic(RaspIotRenderer):
         Uninstall respeaker 2mic driver. At end of uninstallation device reboot is required
         """
         #check params
-        if uninstall_status_callback is None:
-            raise MissingParameter(u'Parameter uninstall_status_callback is missing')
-        if not callable(uninstall_status_callback):
-            raise InvalidParameter(u'Parameter uninstall_status_callback must be a callback')
-        if uninstall_terminated_callback is None:
-            raise MissingParameter(u'Parameter uninstall_terminated_callback is missing')
-        if not callable(uninstall_terminated_callback):
-            raise InvalidParameter(u'Parameter uninstall_terminated_callback must be a callback')
         if self.__driver_task is not None:
-            raise Exception(u'Driver process is already running. Stop it before launching uninstallation')
+            raise CommandError(u'Driver task is already running. Wait end of it before launching uninstallation')
 
         #prepare uninstall
         self.__prepare_driver_task()
@@ -493,21 +541,28 @@ class Respeaker2mic(RaspIotRenderer):
         self.__driver_task = EndlessConsole(command, self.__process_status_callback, self.__process_terminated_callback)
         self.__driver_task.start()
 
-    def stop_driver_task(self):
+    #def stop_driver_task(self):
+    #    """
+    #    Stop running driver task (install or uninstall) if running
+    #
+    #    Return:
+    #        bool: True if running process was stopped, False if no process was running
+    #    """
+    #    if self.__driver_task is not None:
+    #        self.__driver_task.kill()
+    #        self.__driver_task = None
+    #
+    #        return True
+    #
+    #    #no driver process running
+    #    return False
+
+    def set_startup_action(self):
         """
-        Stop running driver task (install or uninstall) if running
-
-        Return:
-            bool: True if running process was stopped, False if no process was running
+        Set startup action
         """
-        if self.__driver_task is not None:
-            self.__driver_task.kill()
-            self.__driver_task = None
-
-            return True
-
-        #no driver process running
-        return False
+        #TODO
+        pass
 
     def __set_led(self, led_id, color, brightness=10):
         """
@@ -543,6 +598,7 @@ class Respeaker2mic(RaspIotRenderer):
             led2 (list): RGB<Brightness> list [0..255, 0..255, 0.255, <0..100>]
             led3 (list): RGB<Brightness> list [0..255, 0..255, 0.255, <0..100>]
         """
+        #led values checked in __set_led function
         if led1 is not None:
             self.__set_led(0, led1)
         if led2 is not None:
@@ -580,13 +636,20 @@ class Respeaker2mic(RaspIotRenderer):
             name (string): profile name
             repeat (int): repeat value (see REPEAT_XXX)
             actions (list): list of actions (see ACTION_XXX)
+
+        Returns:
+            bool: True if led profile added successfully
+
+        Raises:
+            InvalidParameter: if invalid function parameter is specified
+            MissingParameter: if function parameter is missing
         """
         #check params
         if name is None or len(name)==0:
             raise MissingParameter(u'Parameter name is missing')
         if repeat is None:
             raise MissingParameter(u'Parameter repeat is missing')
-        if repeat not in (self.REPEAT_0, self.REPEAT_1, self.REPEAT_2, self.REPEAT_3, self.REPEAT_4, self.REPEAT_5, self.REPEAT_INF):
+        if repeat not in (self.REPEAT_NONE, self.REPEAT_1, self.REPEAT_2, self.REPEAT_3, self.REPEAT_4, self.REPEAT_5, self.REPEAT_INF):
             raise InvalidParameter(u'Parameter repeat is not valid. See available values')
         if actions is None:
             raise MissingParameter(u'Parameter actions is missing')
@@ -662,6 +725,10 @@ class Respeaker2mic(RaspIotRenderer):
 
         Args:
             profile_uuid (string): leds profile uuid
+
+        Raises:
+            CommandError: if error occured during command execution
+            MissingParameter: if function parameter is missing
         """
         #check parameters
         if self.__leds_profile_task is not None:
@@ -687,14 +754,16 @@ class Respeaker2mic(RaspIotRenderer):
         self.__leds_profile_task.enable_test()
         self.__leds_profile_task.start()
 
-        return True
-
     def play_leds_profile(self, profile_uuid):
         """
         Play specified leds profile
 
         Args:
             profile_uuid (string): leds profile uuid
+
+        Raises:
+            CommandError: if error occured during command execution
+            MissingParameter: if function parameter is missing
         """
         #check parameters
         if self.__leds_profile_task is not None:
@@ -718,8 +787,6 @@ class Respeaker2mic(RaspIotRenderer):
         #play profile
         self.__leds_profile_task = LedsProfileTask(self, selected_profile, self.__leds_profile_task_terminated)
         self.__leds_profile_task.start()
-
-        return True
 
     def __stop_leds_profile_task(self):
         """
