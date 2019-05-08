@@ -519,7 +519,7 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
         self.__prepare_driver_task()
   
         #build and install driver
-        command = u'%s 2mic' % (os.path.join(self.TMP_DIR, u'install.sh'))
+        command = u'cd "%s"; ./install.sh 2mic' % self.TMP_DIR
         self.logger.debug('Respeaker driver install command: %s' % command)
         self.__driver_task = EndlessConsole(command, self.__process_status_callback, self.__process_terminated_callback)
         self.__driver_task.start()
@@ -536,7 +536,7 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
         self.__prepare_driver_task()
 
         #uninstall driver
-        command = u'%s 2mic' % (os.path.join(self.TMP_DIR, u'uninstall.sh'))
+        command = u'cd "%s"; ./uninstall.sh 2mic' % self.TMP_DIR
         self.logger.debug('Respeaker driver uninstall command: %s' % command)
         self.__driver_task = EndlessConsole(command, self.__process_status_callback, self.__process_terminated_callback)
         self.__driver_task.start()
