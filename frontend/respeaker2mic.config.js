@@ -69,12 +69,12 @@ var respeaker2micConfigDirective = function($rootScope, toast, respeaker2micServ
          */
         self.installDriver = function()
         {
-            confirm.open('Install driver?', 'Installing this driver will allow you use Respeaker hardware properly. At end of installation, device will reboot.', 'Install')
+            confirm.open('Install driver?', 'Installing this driver will allow you to use Respeaker hardware properly.<br>At end of installation, device will reboot automatically.<br><br><strong>The installation can last some minutes.</strong>', 'Install')
                 .then(function() {
                     return respeaker2micService.installDriver();
                 })
                 .then(function() {
-                    toast.success('Respeaker driver uninstalled. You must reboot device to finalize operation');
+                    toast.info('Installing Respeaker driver...')
                 });
         };
 
@@ -87,8 +87,9 @@ var respeaker2micConfigDirective = function($rootScope, toast, respeaker2micServ
                 .then(function() {
                     return respeaker2micService.uninstallDriver();
                 })
-                .then(function() {
-                    toast.success('Respeaker driver uninstalled. Device will reboot to finalize uninstallation.');
+                .then(function(config) {
+                    self.setConfig(config)
+                    toast.success('Respeaker driver uninstalled. Device will reboot in few seconds to finalize uninstallation.');
                 });
         };
 
@@ -259,7 +260,7 @@ var respeaker2micConfigDirective = function($rootScope, toast, respeaker2micServ
             $mdDialog.show({
                 controller: function() { return self; },
                 controllerAs: 'dialogCtl',
-                templateUrl: 'addLedsProfileDialog.directive.html',
+                templateUrl: 'addLedsProfileDialog.config.html',
                 parent: angular.element(document.body),
                 clickOutsideToClose: true,
                 fullscreen: true
@@ -275,7 +276,7 @@ var respeaker2micConfigDirective = function($rootScope, toast, respeaker2micServ
     };
 
     return {
-        templateUrl: 'respeaker2mic.directive.html',
+        templateUrl: 'respeaker2mic.config.html',
         replace: true,
         scope: true,
         controller: respeaker2micController,

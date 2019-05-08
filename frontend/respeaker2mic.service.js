@@ -26,6 +26,22 @@ var respeaker2micService = function($q, rpcService, raspiotService) {
         return rpcService.sendCommand('test_leds_profile', 'respeaker2mic', {'profile_uuid':uuid});
     };
 
+    self.installDriver = function()
+    {
+        return rpcService.sendCommand('install_driver', 'respeaker2mic', {}, 300)
+            .then(function() {
+                return raspiotService.reloadModuleConfig('respeaker2mic');
+            });
+    };
+
+    self.uninstallDriver = function()
+    {
+        return rpcService.sendCommand('uninstall_driver', 'respeaker2mic', {}, 300)
+            .then(function() {
+                return raspiotService.reloadModuleConfig('respeaker2mic');
+            });
+    };
+
 };
     
 var RaspIot = angular.module('RaspIot');
