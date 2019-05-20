@@ -12,10 +12,9 @@ from raspiot.raspiot import RaspIotRenderer, RaspIotResources
 from raspiot.events.speechRecognitionHotwordProfile import SpeechRecognitionHotwordProfile
 from raspiot.events.speechRecognitionCommandProfile import SpeechRecognitionCommandProfile
 from raspiot.utils import CommandError, InvalidParameter, MissingParameter, CATEGORIES
-from raspiot.libs.drivers.audiodriver import AudioDriver
-from raspiot.libs.commands.lsmod import Lsmod
 from raspiot.libs.internals.console import Console, EndlessConsole
 import apa102 as apa102
+from .seeed2micaudiodriver import Seeed2micAudioDriver
 
 __all__ = ['Respeaker2mic']
 
@@ -186,16 +185,6 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
         }
     }
 
-    AUDIO_DRIVERS = {
-        u'seeed-2mic-voicecard': {
-            u'output_type': AudioDriver.OUTPUT_TYPE_HAT,
-            u'playback_volume': u'Playback',
-            u'playback_volume_data': (u'Front Left', r'\[(\d*)%\]'),
-            u'capture_volume': u'Capture',
-            u'capture_volume_data': (u'Front Left', r'\[(\d*)%\]'),
-        }
-    }
-
     RENDERER_PROFILES = [SpeechRecognitionHotwordProfile, SpeechRecognitionCommandProfile]
     RENDERER_TYPE = u'leds'
 
@@ -316,11 +305,6 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
         ]
     }
 
-    RESPEAKER_REPO = u'https://github.com/respeaker/seeed-voicecard.git'
-    TMP_DIR = u'/tmp/respeaker'
-    DRIVER_PATH = u'/boot/overlays/seeed-2mic-voicecard.dtbo'
-    MOD_WM8960 = u'snd-soc-wm8960'
-
     COLOR_BLACK = [0, 0, 0]
     COLOR_WHITE = [255,255,255]
     COLOR_RED = [255, 0, 0]
@@ -354,27 +338,45 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
         RaspIotResources.__init__(self, bootstrap, debug_enabled)
 
         #members
+        self.seeed2mic_driver = Seeed2micAudioDriver(self.cleep_filesystem)
         self.leds_driver = None
-        self.__driver_task = None
         self.__leds_profile_task = None
-        self.__lsmod = Lsmod()
+
+        #register audio driver
+        self._register_driver(self.seeed2mic_driver)
 
     def _configure(self):
         """
         Configure module
         """
-        #register audio driver
-        for driver_name, driver in self.AUDIO_DRIVERS.items():
-            self._register_driver(AudioDriver(driver_name, driver))
-
         #configure button
         if self._get_config_field(u'button_gpio_uuid') is None:
             self.__configure_button()
 
         #play blink green at startup
-        if self.is_driver_installed():
+        if self.seeed2mic_driver.is_installed():
             self.leds_driver = apa102.APA102(num_led=3)
             self.play_leds_profile(self.LEDS_PROFILE_BLINK_GREEN)
+
+    def install_driver(self):
+        """
+        Install driver
+        """
+        def callback(success, message):
+            driver = self.seeed2mic_driver.name
+            self.logger.info('Driver "%s" installed successfully' % driver) if success else self.logger.error(u'Error during driver "%s" install: %s' % (driver, message))
+
+        self.seeed2mic_driver.install(callback)
+
+    def uninstall_driver(self):
+        """
+        Uninstall driver
+        """
+        def callback(success, message):
+            driver = self.seeed2mic_driver.name
+            self.logger.info('Driver "%s" uninstalled successfully' % driver) if success else self.logger.error(u'Error during driver "%s" uninstall: %s' % (driver, message))
+
+        self.seeed2mic_driver.uninstall(callback)
 
     def __configure_button(self):
         """
@@ -412,8 +414,7 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
         Return module configuration
         """
         return {
-            u'driverprocessing': self.__driver_task is not None,
-            u'driverinstalled': self.is_driver_installed(),
+            u'driverinstalled': self.seeed2mic_driver.is_installed(),
             u'ledsprofiles': self._get_config_field(u'leds_profiles')
         }
 
@@ -435,134 +436,6 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
         """
         self.logger.debug(u'Resource "%s" needs to be released' % resource_name)
         self._release_resource(resource_name)
-
-    def is_driver_installed(self):
-        """ 
-        Return driver installation status
-
-        Return:
-            bool: True if driver already installed
-        """
-        #check if drivers installed
-        if os.path.exists(self.DRIVER_PATH) and self.__lsmod.is_module_loaded(self.MOD_WM8960):
-            return True
-
-        return False
-
-    def __prepare_driver_task(self):
-        """
-        Prepare driver process (install or uninstall).
-        It downloads source and make sure everything is clean before starting
-
-        Raise:
-            Exception
-        """
-        #make sure directory does not exist
-        if os.path.exists(self.TMP_DIR):
-            shutil.rmtree(self.TMP_DIR)
-
-        #get sources
-        cmd = u'/usr/bin/git clone "%s" "%s" 2> /dev/null' % (self.RESPEAKER_REPO, self.TMP_DIR)
-        self.logger.debug(u'Respeaker prepare driver cmd: %s' % cmd)
-        console = Console()
-        res = console.command(cmd, timeout=120)
-        if res[u'killed'] or not os.path.exists(self.TMP_DIR):
-            self.logger.error(u'Error occured during git clone command: %s' % res)
-            raise Exception(u'Unable to install or uninstall respeaker driver: respeaker repository seems not available.')
-        if not os.path.exists(os.path.join(self.TMP_DIR, u'install.sh')) or not os.path.exists(os.path.join(self.TMP_DIR, u'uninstall.sh')):
-            self.logger.error('Install.sh or uninstall.sh scripts do not exists.')
-            raise Exception(u'Unable to install or uninstall respeaker driver: some scripts do not exist.')
-
-    def __process_status_callback(self, stdout, stderr):
-        """
-        Called when running process received something on stdout/stderr
-
-        Args:
-            stdout (string): command stdout string
-            stderr (string): command stderr string
-        """
-        #log for debug installation logs
-        if stdout:
-            self.logger.debug(u'Driver installation stdout: %s' % stdout)
-        if stderr:
-            self.logger.error(u'Driver installation stderr: %s' % stderr)
-
-    def __process_terminated_callback(self, return_code, killed):
-        """
-        Called when running process is terminated
-
-        Args:
-            return_code (string): command return code
-            killed (bool): if True command was killed
-        """
-        #clean everything
-        if os.path.exists(self.TMP_DIR):
-            shutil.rmtree(self.TMP_DIR)
-
-        self.logger.info('Respeaker driver process return code: %s (killed %s)' % (return_code, killed))
-
-        #reset
-        self.__driver_task = None
-
-        #reboot device
-        self.send_command(u'reboot_system', u'system', {u'delay': 5.0})
-
-    def install_driver(self):
-        """
-        Install respeaker 2mic driver. At end of installation device reboot is required
-        """
-        #check params
-        if self.__driver_task is not None:
-            raise CommandError(u'Driver task is already running. Wait end of it before launching uninstallation')
-         
-        #prepare install
-        self.__prepare_driver_task()
-  
-        #build and install driver
-        command = u'cd "%s"; ./install.sh 2mic' % self.TMP_DIR
-        self.logger.debug('Respeaker driver install command: %s' % command)
-        self.__driver_task = EndlessConsole(command, self.__process_status_callback, self.__process_terminated_callback)
-        self.__driver_task.start()
-
-    def uninstall_driver(self):
-        """
-        Uninstall respeaker 2mic driver. At end of uninstallation device reboot is required
-        """
-        #check params
-        if self.__driver_task is not None:
-            raise CommandError(u'Driver task is already running. Wait end of it before launching uninstallation')
-
-        #prepare uninstall
-        self.__prepare_driver_task()
-
-        #uninstall driver
-        command = u'cd "%s"; ./uninstall.sh 2mic' % self.TMP_DIR
-        self.logger.debug('Respeaker driver uninstall command: %s' % command)
-        self.__driver_task = EndlessConsole(command, self.__process_status_callback, self.__process_terminated_callback)
-        self.__driver_task.start()
-
-    #def stop_driver_task(self):
-    #    """
-    #    Stop running driver task (install or uninstall) if running
-    #
-    #    Return:
-    #        bool: True if running process was stopped, False if no process was running
-    #    """
-    #    if self.__driver_task is not None:
-    #        self.__driver_task.kill()
-    #        self.__driver_task = None
-    #
-    #        return True
-    #
-    #    #no driver process running
-    #    return False
-
-    def set_startup_action(self):
-        """
-        Set startup action
-        """
-        #TODO
-        pass
 
     def __set_led(self, led_id, color, brightness=10):
         """
