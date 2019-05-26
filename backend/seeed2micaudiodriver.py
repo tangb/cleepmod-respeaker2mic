@@ -6,7 +6,6 @@ import logging
 import os
 from raspiot.utils import InvalidParameter, MissingParameter
 from raspiot.libs.commands.alsa import Alsa
-from raspiot.libs.commands.modprobe import Modprobe
 from raspiot.libs.commands.lsmod import Lsmod
 from raspiot.libs.configs.etcasoundconf import EtcAsoundConf
 from raspiot.libs.drivers.audiodriver import AudioDriver
@@ -33,16 +32,9 @@ class Seeed2micAudioDriver(AudioDriver):
     TMP_DIR = u'/tmp/respeaker'
 
     DRIVER_PATH = u'/boot/overlays/seeed-2mic-voicecard.dtbo'
-    MODULES_TO_LOAD = [
-        u'snd_soc_simple_card',
+    MODULE_NAMES = [
         u'snd-soc-ac108',
         u'snd-soc-seeed-voicecard',
-        u'snd-soc-wm8960',
-    ]
-    MODULES_TO_UNLOAD = [
-        u'snd-soc-ac108',
-        u'snd-soc-seeed-voicecard',
-        u'snd_soc_simple_card',
         u'snd-soc-wm8960',
     ]
     PATHS = {
@@ -65,52 +57,35 @@ class Seeed2micAudioDriver(AudioDriver):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logger.setLevel(logging.DEBUG)
         self.alsa = Alsa(self.cleep_filesystem)
-        self.modprobe = Modprobe()
         self.lsmod = Lsmod()
         self.asoundconf = EtcAsoundConf(self.cleep_filesystem)
         self.configtxt = ConfigTxt(self.cleep_filesystem)
         self.etcmodules = EtcModules(self.cleep_filesystem)
         self.console = Console()
-        self.card_id = None
-        self.device_id = 0
         self.__driver_task = None
 
-        #set card id
-        self._set_card_id()
-
-    def _set_card_id(self):
+    def _get_card_name(self):
         """
-        Set card id
-        """
-        for card_id, card in self.alsa.get_playback_devices().items():
-            if card[u'name'].find(u'2mic')>=0:
-                self.card_id = card_id
-                self.logger.debug(u'Found card id "%s"' % card_id)
-                break
-
-    def get_device_infos(self):
-        """
-        Returns device infos
+        Return card name
 
         Returns:
-            dict: device infos::
-
-                {
-                    cardname (string): card name
-                    cardid (int): card id
-                    deviceid (int): device id
-                    playback (bool): True if device can play audio
-                    capture (bool): True if device can record audio
-                }
-
+            string: card name
         """
-        return {
-            u'cardname': self.CARD_NAME,
-            u'cardid': self.card_id,
-            u'deviceid': self.device_id,
-            u'playback': True,
-            u'capture': True,
-        }
+        return self.CARD_NAME
+
+    def _get_card_capabilities(self):
+        """ 
+        Return card capabilities
+
+        Returns:
+            tuple: card capabilities::
+
+                (
+                    bool: playback capability,
+                    bool: capture capability
+                )
+        """
+        return (True, True)
 
     def _get_repository(self):
         """
@@ -182,10 +157,11 @@ class Seeed2micAudioDriver(AudioDriver):
         if os.path.exists(self.TMP_DIR):
             self.cleep_filesystem.rmdir(self.TMP_DIR)
 
+        #check install.sh return code
         if console.get_last_return_code()!=0:
             return False
 
-        #disable seeed-voicecard systemd service
+        #disable seeed-voicecard systemd service because system is readonly cleep needs to handle its execution by itself
         cmd = u'/bin/systemctl disable seeed-voicecard.service'
         resp = self.console.command(cmd)
         self.logger.debug(u'Service "seeed-voicecard" disabling response: %s' % resp)
@@ -196,13 +172,10 @@ class Seeed2micAudioDriver(AudioDriver):
         #finalize installation fixing some mandatory features that may not have worked during install.sh script
         config = self.configtxt.enable_i2c() and self.configtxt.enable_i2s() and self.configtxt.enable_i2s_mmap() and self.configtxt.enable_spi()
         self.logger.debug(u'Config check %s' % config)
-        module = all([self.etcmodules.enable_module(m) for m in self.MODULES_TO_LOAD])
+        module = all([self.etcmodules.enable_module(m) for m in self.MODULE_NAMES])
         self.logger.debug(u'Module check %s' % module)
         paths = all([os.path.exists(p) for p in self.PATHS.values()])
         self.logger.debug(u'Paths check %s' % paths)
-
-        #register system modules
-        self.register_system_modules([self.MODULES_TO_LOAD])
 
         return True if config and module and paths else False
 
@@ -231,6 +204,7 @@ class Seeed2micAudioDriver(AudioDriver):
         if os.path.exists(self.TMP_DIR):
             self.cleep_filesystem.rmdir(self.TMP_DIR)
 
+        #check script return code
         if resp[u'returncode']!=0:
             return False
 
@@ -244,12 +218,8 @@ class Seeed2micAudioDriver(AudioDriver):
             self.cleep_filesystem.rm(self.PATHS[u'bin'])
         if os.path.exists(self.PATHS[u'service']):
             self.cleep_filesystem.rm(self.PATHS[u'service'])
-        #make sure all modules unloaded
-        module = all([self.etcmodules.disable_module(m) for m in self.MODULES_TO_UNLOAD])
+        module = all([self.etcmodules.disable_module(m) for m in self.MODULE_NAMES])
         self.logger.debug(u'Module check %s' % module)
-
-        #unregister system modules
-        self.unregister_system_modules([self.MODULE_NAMES])
 
         return True if config and module else False
 
@@ -261,8 +231,7 @@ class Seeed2micAudioDriver(AudioDriver):
             bool: True if driver is installed
         """
         boot = self.configtxt.is_i2c_enabled() and self.configtxt.is_i2s_enabled() and self.configtxt.is_i2s_mmap_enabled() and self.configtxt.is_spi_enabled()
-        #modules =  all([self.etcmodules.is_module_enabled(module) for module in self.MODULE_NAMES])
-        modules = True
+        modules =  all([self.etcmodules.is_module_enabled(module) for module in self.MODULE_NAMES])
         paths = all([os.path.exists(p) for p in self.PATHS.values()])
         self.logger.debug(u'is installed? boot=%s modules=%s paths=%s' % (boot, modules, paths))
 
@@ -280,30 +249,33 @@ class Seeed2micAudioDriver(AudioDriver):
         Returns:
             bool: True if driver enabled
         """
-        out = False
+        out = True
 
         #enable filesystem writings while executing seeed-voicecard script
         self.cleep_filesystem.enable_write(root=True, boot=False)
 
         try:
-            #execute /usr/bin/seeed-voicecard bin (that is executed while service is enabled)
-            cmd = u'/usr/bin/seeed-voicecard'
-            self.logger.debug(u'Enable driver: execute command: %s' % cmd)
-            resp = self.console.command(cmd)
-            self.logger.debug(u'/usr/bin/seeed-voicecard bin response: %s' % resp)
-            out = True if self.console.get_last_return_code()==0 else False
+            #bypass /usr/bin/seeed-voicecard binary that is not reliable (sometimes i2cdetect does not work)
+            #but execute the same commands below
+            self.cleep_filesystem.rm(u'/etc/asound.conf')
+            self.cleep_filesystem.rm(u'/var/lib/alsa/asound.state')
+            if not self.cleep_filesystem.ln(u'/etc/voicecard/asound_2mic.conf', u'/etc/asound.conf'):
+                raise Exception(u'Unable to create symlink to /etc/asound.conf')
+            if not self.cleep_filesystem.ln(u'/etc/voicecard/wm8960_asound.state', u'/var/lib/alsa/asound.state'):
+                raise Exception(u'Unable to create symlink to /var/lib/alsa/asound.state')
+            if not self.alsa.amixer_control(Alsa.CSET, 3, 1):
+                raise Exception(u'Error executing amixer control command')
 
-            #and load system modules
-            for module in self.MODULES_TO_LOAD:
-                self.logger.debug(u'Enabling system module "%s"' % module)
-                if not self.modprobe.load_module(module):
-                    out = False
-                    self.logger.error(u'Unable to load system module "%s"' % module)
-                else:
-                    self.logger.debug(u'-> module loaded')
+            #patch asound_2mic.conf adding default ctl if necessary
+            default_ctl = self.asoundconf.get_default_ctl_section()
+            if default_ctl is None:
+                self.logger.debug(u'Add missing CTL section in asound.conf')
+                (card_id, device_id) = self._get_cardid_deviceid()
+                self.asoundconf.add_default_ctl_section(card_id, device_id)
 
         except:
             self.logger.exception(u'Error while enabling driver:')
+            out = False
 
         finally:
             #disable filesystem writings
@@ -321,21 +293,12 @@ class Seeed2micAudioDriver(AudioDriver):
         Returns:
             bool: True if driver disabled
         """
-        out = True
-
         #delete alsa conf
         self.asoundconf.delete()
+        if os.path.exists('/var/lib/alsa/asound.state'):
+            self.cleep_filesystem.rm('/var/lib/alsa/asound.state')
         
-        #unload system modules
-        for module in self.MODULES_TO_UNLOAD:
-            self.logger.debug(u'Unload module "%s"' % module)
-            if not self.modprobe.unload_module(module):
-                self.logger.error(u'Unable to unload system module "%s"' % module)
-                out = False
-        #reload snd_soc_simple_card module that just prevent from removing snd_soc_wm8960 if loaded
-        self.modprobe.load_module(u'snd_soc_simple_card')
-
-        return out
+        return True
 
     def is_enabled(self):
         """
@@ -351,7 +314,7 @@ class Seeed2micAudioDriver(AudioDriver):
 
         #check loaded system modules
         modules = True
-        for module in self.MODULES_TO_LOAD:
+        for module in self.MODULE_NAMES:
             if not self.lsmod.is_module_loaded(module):
                 self.logger.debug(u'System module "%s" is not loaded' % module)
                 modules = False

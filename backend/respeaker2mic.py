@@ -173,15 +173,11 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
 
     MODULE_CONFIG_FILE = u'respeaker2mic.conf'
     MODULE_RESOURCES = { 
-        u'ReSpeaker2Mic soundcard': {
-            u'audio.playback': {
-                u'hardware_id': u'seeed-2mic-voicecard',
-                u'permanent': True
-            },
-            u'audio.capture': {
-                u'hardware_id': u'seeed-2mic-voicecard',
-                u'permanent': True
-            }
+        u'audio.playback': {
+            u'permanent': True
+        },
+        u'audio.capture': {
+            u'permanent': True
         }
     }
 
