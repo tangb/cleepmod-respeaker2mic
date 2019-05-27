@@ -191,26 +191,26 @@ class Seeed2micAudioDriver(AudioDriver):
             CommandError: if command failed
             Exception: if error occured during process
         """
+        #first of all disable it
+        self.disable()
+
         #clone git repo
         self._get_repository()
         
         #uninstall driver
         cmd = u'cd "%s"; ./uninstall.sh 2mic' % self.TMP_DIR
         console = Console()
-        resp = console.command(cmd, self.__process_status_callback, self.__process_terminated_callback)
-        self.logger.debug(u'Uninstall command "%s" resp: %s' % (cmd, resp))
+        resp = console.command(cmd)
+        self.logger.info(u'Uninstall command "%s" resp: %s' % (cmd, resp))
 
         #clean everything
         if os.path.exists(self.TMP_DIR):
             self.cleep_filesystem.rmdir(self.TMP_DIR)
 
-        #check script return code
-        if resp[u'returncode']!=0:
-            return False
-
         #make sure everything is disabled in /boot/config.txt
         config = self.configtxt.disable_i2c() and self.configtxt.disable_i2s() and self.configtxt.disable_i2s_mmap() and self.configtxt.disable_spi()
-        self.logger.debug(u'Config check %s' % config)
+        self.logger.info(u'Config check %s' % config)
+
         #make sure all files are deleted
         if os.path.exists(self.PATHS[u'etc']):
             self.cleep_filesystem.rmdir(self.PATHS[u'etc'])
@@ -218,8 +218,10 @@ class Seeed2micAudioDriver(AudioDriver):
             self.cleep_filesystem.rm(self.PATHS[u'bin'])
         if os.path.exists(self.PATHS[u'service']):
             self.cleep_filesystem.rm(self.PATHS[u'service'])
+
+        #make sure all sound modules are disabled
         module = all([self.etcmodules.disable_module(m) for m in self.MODULE_NAMES])
-        self.logger.debug(u'Module check %s' % module)
+        self.logger.info(u'Module check %s' % module)
 
         return True if config and module else False
 
