@@ -9,7 +9,7 @@ from raspiot.libs.commands.alsa import Alsa
 from raspiot.libs.commands.lsmod import Lsmod
 from raspiot.libs.configs.etcasoundconf import EtcAsoundConf
 from raspiot.libs.drivers.audiodriver import AudioDriver
-from raspiot.libs.internals.console import Console
+from raspiot.libs.internals.console import Console, EndlessConsole
 from raspiot.libs.configs.configtxt import ConfigTxt
 from raspiot.libs.configs.etcmodules import EtcModules
 
@@ -63,6 +63,7 @@ class Seeed2micAudioDriver(AudioDriver):
         self.etcmodules = EtcModules(self.cleep_filesystem)
         self.console = Console()
         self.__driver_task = None
+        self.__install_return_code = None
 
     def _get_card_name(self):
         """
@@ -129,6 +130,7 @@ class Seeed2micAudioDriver(AudioDriver):
             killed (bool): if True command was killed
         """
         self.logger.info('Respeaker driver process return code: %s (killed %s)' % (return_code, killed))
+        self.__install_return_code = return_code
 
     def _install(self, params=None):
         """
@@ -147,8 +149,7 @@ class Seeed2micAudioDriver(AudioDriver):
         #build and install driver
         command = u'cd "%s"; ./install.sh 2mic' % self.TMP_DIR
         self.logger.debug('Respeaker driver install command: %s' % command)
-        console = EndlessConsole()
-        console.command(command, self.__process_status_callback, self.__install_terminated_callback)
+        console = EndlessConsole(command, self.__process_status_callback, self.__install_terminated_callback)
         console.start()
         #make EndlessConsole blocking
         console.join()
@@ -158,7 +159,7 @@ class Seeed2micAudioDriver(AudioDriver):
             self.cleep_filesystem.rmdir(self.TMP_DIR)
 
         #check install.sh return code
-        if console.get_last_return_code()!=0:
+        if self.__install_return_code!=0:
             return False
 
         #disable seeed-voicecard systemd service because system is readonly cleep needs to handle its execution by itself
