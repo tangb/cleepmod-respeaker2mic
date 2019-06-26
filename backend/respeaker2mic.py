@@ -442,7 +442,7 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
             color (list): RGB tuple (0,0,0) or RGB+brightness value (0,0,0,0) [0..255]
             brightness (int): brightness percentage (default 10%) [0..100]
         """
-        if self.leds_drivers is None:
+        if self.leds_driver is None:
             raise InvalidParameter(u'Driver is not installed')
         if led_id<0 or led_id>2:
             raise InvalidParameter(u'Led_id must be 0..2')
@@ -469,7 +469,7 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
             led2 (list): RGB<Brightness> list [0..255, 0..255, 0.255, <0..100>]
             led3 (list): RGB<Brightness> list [0..255, 0..255, 0.255, <0..100>]
         """
-        if self.leds_drivers is None:
+        if self.leds_driver is None:
             raise InvalidParameter(u'Driver is not installed')
 
         #led values checked in __set_led function
@@ -492,7 +492,7 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
             led2 (bool): True to turn off led2
             led3 (bool): True to turn off led3
         """
-        if self.leds_drivers is None:
+        if self.leds_driver is None:
             raise InvalidParameter(u'Driver is not installed')
 
         if led1:
