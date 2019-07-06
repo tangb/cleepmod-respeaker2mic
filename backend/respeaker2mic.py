@@ -9,8 +9,8 @@ from threading import Thread
 import copy
 import shutil
 from raspiot.raspiot import RaspIotRenderer, RaspIotResources
-from raspiot.events.speechRecognitionHotwordProfile import SpeechRecognitionHotwordProfile
-from raspiot.events.speechRecognitionCommandProfile import SpeechRecognitionCommandProfile
+from raspiot.profiles.speechRecognitionHotwordProfile import SpeechRecognitionHotwordProfile
+from raspiot.profiles.speechRecognitionCommandProfile import SpeechRecognitionCommandProfile
 from raspiot.utils import CommandError, InvalidParameter, MissingParameter, CATEGORIES
 from raspiot.libs.internals.console import Console, EndlessConsole
 import apa102 as apa102
@@ -390,7 +390,7 @@ class Respeaker2mic(RaspIotRenderer, RaspIotResources):
             u'gpio': u'GPIO17',
             u'mode': u'input',
             u'keep': False,
-            u'reverted': False
+            u'inverted': False
         }   
         resp_gpio = self.send_command(u'add_gpio', u'gpios', params)
         if resp_gpio[u'error']:
