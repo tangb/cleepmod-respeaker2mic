@@ -1,0 +1,7 @@
+**/*.pyc
+**/.coverage
+docs/*.zip
+docs/*.txt
+docs/source
+docs/_build
+.vscode

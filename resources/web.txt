@@ -1,0 +1,9 @@
+Website:
+https://respeaker.io/2_mic_array/
+
+Driver page:
+https://github.com/respeaker/seeed-voicecard
+
+Official respeaker2mic github repo (apa102.py file):
+https://github.com/respeaker/mic_hat
+
