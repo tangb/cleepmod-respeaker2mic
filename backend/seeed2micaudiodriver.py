@@ -55,7 +55,7 @@ class Seeed2micAudioDriver(AudioDriver):
 
         #members
         self.logger = logging.getLogger(self.__class__.__name__)
-        self.logger.setLevel(logging.DEBUG)
+        #self.logger.setLevel(logging.DEBUG)
         self.alsa = Alsa(self.cleep_filesystem)
         self.lsmod = Lsmod()
         self.asoundconf = EtcAsoundConf(self.cleep_filesystem)
