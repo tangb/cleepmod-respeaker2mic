@@ -12,7 +12,7 @@ from mock import Mock
 class TestRespeaker2mic(unittest.TestCase):
 
     def setUp(self):
-        self.session = session.Session(logging.CRITICAL)
+        self.session = session.TestSession(logging.CRITICAL)
         _respeaker2mix = Respeaker2mic
         self.module = self.session.setup(_respeaker2mix)
 
